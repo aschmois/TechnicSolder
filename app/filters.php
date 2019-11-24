@@ -162,6 +162,7 @@ Route::filter('solder_mods', function()
 		case 'delete':
 		$check = 'mods_delete';
 		break;
+		case 'file-refresh':
 		case 'modify':
 		case 'view':
 		case 'list':

@@ -82,14 +82,12 @@
 							<form method="post" id="add" action="{{ URL::to('mod/add-version') }}">
 								<input type="hidden" name="mod-id" value="{{ $mod->id }}">
 								<td></td>
-								<td>
-									<input type="text" name="add-version" id="add-version" class="form-control"></td>
-								<td>
-									<input type="text" name="add-md5" id="add-md5" class="form-control"></td>
-								</td>
-								<td><span id="add-url">N/A</span></td>
+								<td><select type="text" name="add-version" id="add-version" class="form-control" /></td>
+								<td><input type="text" name="add-md5" id="add-md5" class="form-control"></td>
 								<td>N/A</td>
-								<td><button type="submit" class="btn btn-success btn-small add">Add Version</button></td>
+								<td><span id="add-url">N/A</span></td>
+								<td><button type="submit" class="btn btn-success btn-small add">Add Version</button>
+								<button id="refresh" class="btn btn-primary btn-small"><i id="refresh-icon" class="fa fa-refresh"></i></button></td>
 							</form>
 						</tr>
 						@foreach ($mod->versions()->orderBy('id', 'desc')->get() as $ver)
@@ -124,11 +122,46 @@
 @endsection
 @section('bottom')
 <script type="text/javascript">
+function refresh() {
+	$('#refresh-icon').addClass("fa-spin");
+	$.ajax({
+			type: "GET",
+			url: "{{ URL::to('mod/file-refresh/'.$mod->id) }}",
+			success: function (data) {
+				$('#refresh-icon').removeClass("fa-spin");
+				if (data.status == "success") {
+					$('#add-version').empty();
+					if(data.versions.length > 0) {
+						$('#add-version').append('<option value=\"\">Select Version</option>');
+						$.each(data.versions,function(key, value)
+						{
+						    $('#add-version').append('<option value=' + value + '>' + value + '</option>');
+						    if(data.versions.length == key -1)
+						    	$("#add-url").html('<a href="{{ Config::get("solder.mirror_url") }}mods/{{ $mod->name }}/{{ $mod->name }}-' + $(this).val() + '.zip" target="_blank">{{ Config::get("solder.mirror_url") }}mods/{{ $mod->name }}/{{ $mod->name }}-' + $(this).val() + '.zip</a>');
+						});
+					} else {
+						$('#add-version').append('<option value=\"\">N/A</option>');
+						$("#add-url").html('N/A');
+					}
+				} else {
+					$.jGrowl('Error: ' + data.reason, { group: 'alert-warning' });
+				}
+			},
+			error: function (xhr, textStatus, errorThrown) {
+				$('#refresh-icon').removeClass("fa-spin");
+				$.jGrowl(textStatus + ': ' + errorThrown, { group: 'alert-warning' });
+			}
+		});
+}
 
 var mirror_url = '{{ Config::get("solder.mirror_url") }}';
 
-$('#add-version').keyup(function() {
-	$("#add-url").html('<a href="' + mirror_url + 'mods/{{ $mod->name }}/{{ $mod->name }}-' + $(this).val() + '.zip" target="_blank">' + mirror_url + 'mods/{{ $mod->name }}/{{ $mod->name }}-' + $(this).val() + '.zip</a>');
+$('#add-version').change(function() {
+	if ($('#add-version').val() != "") {
+		$("#add-url").html('<a href="{{ Config::get("solder.mirror_url") }}mods/{{ $mod->name }}/{{ $mod->name }}-' + $(this).val() + '.zip" target="_blank">{{ Config::get("solder.mirror_url") }}mods/{{ $mod->name }}/{{ $mod->name }}-' + $(this).val() + '.zip</a>');
+	} else {
+		$("#add-url").html('N/A');
+	}
 });
 
 $('#add').submit(function(e) {
@@ -141,9 +174,11 @@ $('#add').submit(function(e) {
 			data: $("#add").serialize(),
 			success: function (data) {
 				if (data.status == "success") {
+					refresh();
 					$("#add-row").after('<tr><td></td><td>' + data.version + '</td><td>' + data.md5 + '</td><td><a href="' + mirror_url + 'mods/{{ $mod->name }}/{{ $mod->name }}-' + data.version + '.zip" target="_blank">' + mirror_url + 'mods/{{ $mod->name }}/{{ $mod->name }}-' + data.version + '.zip</a></td><td>' + data.filesize + '</td><td></td></tr>');
 					$.jGrowl('Added mod version at ' + data.version, { group: 'alert-success' });
 				} else if (data.status == "warning") {
+					refresh();
 					$("#add-row").after('<tr><td></td><td>' + data.version + '</td><td>' + data.md5 + '</td><td><a href="' + mirror_url + 'mods/{{ $mod->name }}/{{ $mod->name }}-' + data.version + '.zip" target="_blank">' + mirror_url + 'mods/{{ $mod->name }}/{{ $mod->name }}-' + data.version + '.zip</a></td><td>' + data.filesize + '</td><td></td></tr>');
 					$.jGrowl('Added mod version at ' + data.version + ". " + data.reason, { group: 'alert-warning' });
 				} else {
@@ -153,8 +188,13 @@ $('#add').submit(function(e) {
 			error: function (xhr, textStatus, errorThrown) {
 				$.jGrowl(textStatus + ': ' + errorThrown, { group: 'alert-danger' });
 			}
-		})
+		});
 	}
+});
+
+$('#refresh').click(function(e) {
+	e.preventDefault();
+	refresh();
 });
 
 $('.version-icon').click(function() {
@@ -196,6 +236,7 @@ $('.delete').click(function(e) {
 		url: "{{ URL::to('mod/delete-version') }}/" + $(this).attr('rel'),
 		success: function (data) {
 			if (data.status == "success") {
+				refresh();
 				$('.version[rel=' + data.version_id + ']').fadeOut();
 				$('.version-details[rel=' + data.version_id + ']').fadeOut();
 				$.jGrowl('Mod version ' + data.version + ' deleted.', { group: 'alert-success' });
@@ -207,6 +248,17 @@ $('.delete').click(function(e) {
 			$.jGrowl(textStatus + ': ' + errorThrown, { group: 'alert-danger' });
 		}
 	});
+});
+
+$(document).ready(function() {
+	refresh();
+	var tab = window.location.hash.substr(1);
+
+	if (tab == "versions") {
+		$('#tabs a[href="#versions"]').tab('show');
+	} else {
+		$('#tabs a[href="#details"]').tab('show');
+	}
 });
 
 </script>
